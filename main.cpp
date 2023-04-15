@@ -21,18 +21,26 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 
 // settings
-const unsigned int SCR_WIDTH = 600;
-const unsigned int SCR_HEIGHT = 600;
+bool vr_enabled = true;
+
+const unsigned int SCR_WIDTH = 1000;
+const unsigned int SCR_HEIGHT = 500;
+const unsigned int RENDER_WIDTH =  4000;
+const unsigned int RENDER_HEIGHT = 4000;
 
 // camera
 
 
-
 struct Cameras{
-    Camera left = Camera(glm::vec3(0.0f, 0.0f, 3.0f));
-    Camera right = Camera(glm::vec3(0.065f, 0.0f, 3.0f));
+private:
+    glm::vec3 worldup = {0.0f, 1.0f, 0.0f};
+
+public:
+    Camera left  = Camera(glm::vec3(0.0f, 0.0f, 3.0f), worldup);
+    Camera right = Camera(glm::vec3(0.065f, 0.0f, 3.0f),  worldup);
 
     Camera *array[2] = {&left, &right};
+
 } Cameras;
 
 float lastX = SCR_WIDTH / 2.0f;
@@ -42,6 +50,8 @@ bool firstMouse = true;
 // timing
 float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
+
+float imageAspect = 1.0f;
 
 float vertices[] = {
         -1.0f, -1.0f,  1.0f,  0.0f, 0.0f,
@@ -57,6 +67,26 @@ glm::vec3 cubePositions[] = {
         glm::vec3( 0.0f,  0.0f,  -8.0f),
 };
 
+GLuint makeQuadTexture(const char* path){
+    GLuint texture;
+    cv::Mat image = cv::imread(path);
+    cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
+    imageAspect = (float) image.rows / image.cols;
+
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.cols, image.rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    return texture;
+}
+
+
 int main()
 {
     // glfw: initialize and configure
@@ -66,13 +96,9 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
 
     // glfw window creation
-    // --------------------
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH * 2, SCR_HEIGHT, "OpenGL SteamVR", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "OpenGL SteamVR", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -83,6 +109,7 @@ int main()
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
+    glfwSwapInterval(0);
 
     // tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -95,15 +122,15 @@ int main()
         return -1;
     }
 
+    // Initialize ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::CreateContext();
     ImGui_ImplGlfw_InitForOpenGL( window, true );
     ImGui_ImplOpenGL3_Init( "#version 330" );
 
-//#define vr_enabled
-#ifdef vr_enabled
-    if (vr::VR_IsHmdPresent()) {
+    // Initialize OpenVR
+    if (vr::VR_IsHmdPresent() && vr_enabled) {
         auto VRError = vr::VRInitError_None;
         auto VRSystem = vr::VR_Init(&VRError, vr::VRApplication_Scene);
 
@@ -115,7 +142,6 @@ int main()
     }else{
         std::cout << "HMD not found" << std::endl;
     }
-#endif
 
 
 
@@ -126,7 +152,7 @@ int main()
     unsigned int rbo;
     glGenRenderbuffers(1, &rbo);
     glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, SCR_WIDTH*2, SCR_HEIGHT);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, RENDER_WIDTH, RENDER_HEIGHT);
 
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
     // configure global opengl state
@@ -134,20 +160,17 @@ int main()
     glEnable(GL_DEPTH_TEST);
 
 
-
-    glfwSwapInterval(0);
-
     GLuint rightEyeTexture;
     glGenTextures(1, &rightEyeTexture);
     glBindTexture(GL_TEXTURE_2D, rightEyeTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH*2, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, RENDER_WIDTH, RENDER_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     GLuint leftEyeTexture;
     glGenTextures(1, &leftEyeTexture);
     glBindTexture(GL_TEXTURE_2D, leftEyeTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH*2, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, RENDER_WIDTH, RENDER_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -171,25 +194,13 @@ int main()
 
     // Quad texture
 
-    unsigned int texture1;
-    glGenTextures(1, &texture1);
-    glBindTexture(GL_TEXTURE_2D, texture1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    GLuint leftColor = makeQuadTexture("wR.jpg");
+    GLuint rightColor = makeQuadTexture("wL.jpg");
 
-
-    unsigned int chuj = 0xFF00FFFF;
-    cv::Mat image = cv::imread("w.jpg");
-    cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.cols, image.rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
-    glGenerateMipmap(GL_TEXTURE_2D);
 
     Shader ourShader("../camera.vs", "../camera.fs");
     ourShader.use();
-    ourShader.setInt("texture1", 0);
+//    ourShader.setInt("leftColor", 0);
 
 
     while (!glfwWindowShouldClose(window)) {
@@ -201,97 +212,90 @@ int main()
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, RENDER_WIDTH, RENDER_HEIGHT);
+        float currentFrame = static_cast<float>(glfwGetTime());
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
 
-        Camera camera;
-        vr::HmdMatrix44_t steamProjectionMatrix;
+        processInput(window);
 
-        for (int i = 0; i < 2; ++i) {
+        vr::HmdMatrix44_t steamProjectionMatrix{};
 
-            if( i == 0){
+        for (Camera *cam : Cameras.array) {
+
+            if(cam == &Cameras.left){
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, leftEyeTexture, 0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                camera = Cameras.left;
-
-                #ifdef vr_enabled
+                glBindTexture(GL_TEXTURE_2D, leftColor);
+                if(vr_enabled)
                     steamProjectionMatrix = vr::VRSystem()->GetProjectionMatrix(vr::Eye_Left, 0.1f, 100.0f);
-                #endif
             }
-            if( i == 1){
+
+            if(cam == &Cameras.right){
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rightEyeTexture, 0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                camera = Cameras.right;
+                glBindTexture(GL_TEXTURE_2D, rightColor);
 
-                #ifdef vr_enabled
+                if(vr_enabled)
                     steamProjectionMatrix = vr::VRSystem()->GetProjectionMatrix(vr::Eye_Right, 0.1f, 100.0f);
-                #endif
-
             }
 
-            float currentFrame = static_cast<float>(glfwGetTime());
-            deltaTime = currentFrame - lastFrame;
-            lastFrame = currentFrame;
 
-            // input
-            // -----
-            processInput(window);
-
-
-            // bind textures on corresponding texture units
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texture1);
-
-            // activate shader
-            ourShader.use();
 
             // pass projection matrix to shader (note that in this case it could change every frame)
-            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-//
-        #ifdef vr_enabled
-            glm::mat4 openglMatrix = glm::transpose(glm::make_mat4(&steamProjectionMatrix.m[0][0]));
+            glm::mat4 projection = glm::perspective(glm::radians(cam->Zoom), (float)RENDER_WIDTH / (float) RENDER_HEIGHT, 0.1f, 100.0f);
 
-            // Convert the coordinate system
-            glm::mat4 flipY(1.0f);
-            flipY[1][1] = -1.0f;
-            projection = flipY * openglMatrix;
-        #endif
+            if(vr_enabled){
+                glm::mat4 openglMatrix = glm::transpose(glm::make_mat4(&steamProjectionMatrix.m[0][0]));
 
+                // Convert the coordinate system
+                glm::mat4 flipY(1.0f);
+                flipY[1][1] = -1.0f;
+                projection = flipY * openglMatrix;
+            }
+
+            glm::mat4 view = cam->GetViewMatrix();
+
+            glm::mat4 model = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+            model = glm::translate(model, cubePositions[0]);
+            model = glm::scale(model, glm::vec3(1.0f, imageAspect, 1.0f) );
+            ourShader.use();
+
+            ourShader.setMat4("model", model);
             ourShader.setMat4("projection", projection);
-
-            glm::mat4 view = camera.GetViewMatrix();
-
             ourShader.setMat4("view", view);
 
-            // render boxes
+            // Render quads
             glBindVertexArray(VAO);
-            for (unsigned int i = 0; i < 1; i++)
-            {
-                // calculate the model matrix for each object and pass it to shader before drawing
-                glm::mat4 model = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
-                model = glm::translate(model, cubePositions[i]);
-                ourShader.setMat4("model", model);
-
-                glDrawArrays(GL_TRIANGLES, 0, 6);
-            }
+            glDrawArrays(GL_TRIANGLES, 0, 6);
 
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+
+        // Render ImGui
+        int flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus;
+        ImVec2 size = ImVec2(SCR_WIDTH / 2, SCR_HEIGHT);
+
+        // Flip verically
+        ImVec2 uv0 = {0, 1};
+        ImVec2 uv1 = {1, 0};
+
         ImGui::SetNextWindowPos(ImVec2(0,0));
-        ImGui::SetNextWindowSize( ImVec2(SCR_WIDTH, SCR_HEIGHT) );
-        ImGui::Begin("LOL",  nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus);
-            ImGui::Image( (void*)(intptr_t) leftEyeTexture, ImVec2(SCR_WIDTH, SCR_HEIGHT));
+        ImGui::SetNextWindowSize( size );
+        ImGui::Begin("LOL", nullptr, flags);
+            ImGui::Image( (void*)(intptr_t) leftEyeTexture, size, uv0, uv1);
         ImGui::End();
-        ImGui::SetNextWindowPos(ImVec2(SCR_WIDTH,0));
-        ImGui::SetNextWindowSize( ImVec2(SCR_WIDTH, SCR_HEIGHT) );
-        ImGui::Begin("LOLXD",  nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus);
-            ImGui::Image( (void*)(intptr_t) rightEyeTexture, ImVec2(SCR_WIDTH, SCR_HEIGHT));
+
+        ImGui::SetNextWindowPos(ImVec2(SCR_WIDTH / 2,0));
+        ImGui::SetNextWindowSize( size );
+        ImGui::Begin("LOLXD", nullptr, flags);
+            ImGui::Image( (void*)(intptr_t) rightEyeTexture, size, uv0, uv1 );
         ImGui::End();
 
 
         // Pass textures to OpenVR
-#ifdef vr_enabled
-
-        if (vr::VR_IsHmdPresent()) {
+        if(vr_enabled){
 
             vr::VRTextureBounds_t textureBounds = {0.0f, 0.0f, 1.0f, 1.0f};
             vr::TrackedDevicePose_t trackedDevicePose[vr::k_unMaxTrackedDeviceCount];
@@ -307,23 +311,18 @@ int main()
             error = vr::VRCompositor()->Submit(vr::Eye_Right, &rightEye, &textureBounds);
 
         }
-#endif
 
+        // End of frame
         glfwPollEvents();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
         glfwSwapBuffers(window);
-
-
     }
 
-    // optional: de-allocate all resources once they've outlived their purpose:
-    // ------------------------------------------------------------------------
+    // Cleanup
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
 
-    // glfw: terminate, clearing all previously allocated GLFW resources.
-    // ------------------------------------------------------------------
     ImGui_ImplGlfw_Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui::DestroyContext();
@@ -351,10 +350,10 @@ void processInput(GLFWwindow *window)
     }
 
     if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
-        Cameras.right.Position[0] += -1 * deltaTime;
+        Cameras.right.Position[0] += -0.5 * deltaTime;
 
     if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS)
-        Cameras.right.Position[0] += 1 * deltaTime;
+        Cameras.right.Position[0] += 0.5 * deltaTime;
 
 //    std::cout << Cameras.right.Position[0] << std::endl;
 
