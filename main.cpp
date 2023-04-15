@@ -5,6 +5,7 @@
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/gtx/string_cast.hpp"
 
+#include "opencv2/opencv.hpp"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_glfw.h"
@@ -12,6 +13,7 @@
 #include "shader.h"
 #include "camera.h"
 #include <iostream>
+#include "openvr.h"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
@@ -23,6 +25,7 @@ const unsigned int SCR_WIDTH = 600;
 const unsigned int SCR_HEIGHT = 600;
 
 // camera
+
 
 
 struct Cameras{
@@ -39,6 +42,20 @@ bool firstMouse = true;
 // timing
 float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
+
+float vertices[] = {
+        -1.0f, -1.0f,  1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f,   1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f,   1.0f, 1.0f,
+         1.0f,  1.0f,  1.0f,   1.0f, 1.0f,
+        -1.0f,  1.0f,  1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f,  1.0f,  0.0f, 0.0f,
+};
+
+// world space positions of our cubes
+glm::vec3 cubePositions[] = {
+        glm::vec3( 0.0f,  0.0f,  -8.0f),
+};
 
 int main()
 {
@@ -84,71 +101,21 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL( window, true );
     ImGui_ImplOpenGL3_Init( "#version 330" );
 
+//#define vr_enabled
+#ifdef vr_enabled
+    if (vr::VR_IsHmdPresent()) {
+        auto VRError = vr::VRInitError_None;
+        auto VRSystem = vr::VR_Init(&VRError, vr::VRApplication_Scene);
 
+        if (VRError != vr::VRInitError_None){
+            std::cout << "OpenVR initialization failed: " << vr::VR_GetVRInitErrorAsEnglishDescription(VRError) << std::endl;
+            return 1;
+        }
 
-    // set up vertex data (and buffer(s)) and configure vertex attributes
-    // ------------------------------------------------------------------
-    float vertices[] = {
-            -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-            0.5f, -0.5f, -0.5f,   1.0f, 0.0f,
-            0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
-            0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
-            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-
-            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-            0.5f, -0.5f,  0.5f,   1.0f, 0.0f,
-            0.5f,  0.5f,  0.5f,   1.0f, 1.0f,
-            0.5f,  0.5f,  0.5f,   1.0f, 1.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-
-            -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-            -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-            -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f, -0.5f, -0.5f,   1.0f, 1.0f,
-            0.5f, -0.5f,  0.5f,   1.0f, 0.0f,
-            0.5f, -0.5f,  0.5f,   1.0f, 0.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-
-            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
-            0.5f,  0.5f,  0.5f,   1.0f, 0.0f,
-            0.5f,  0.5f,  0.5f,   1.0f, 0.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
-            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
-    };
-    // world space positions of our cubes
-    glm::vec3 cubePositions[] = {
-            glm::vec3( 0.0f,  0.0f,  0.0f),
-    };
-
-
-    // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
-    // -------------------------------------------------------------------------------------------
-
-
-    auto *datum = new unsigned char[SCR_WIDTH*SCR_HEIGHT*4];
-    for (int i = 0; i < SCR_WIDTH*SCR_HEIGHT; ++i) {
-        datum[i * 4 + 0] = i / 4;
-        datum[i * 4 + 1] = i / 2;
-        datum[i * 4 + 2] = i / 7;
-        datum[i * 4 + 3] = 255;
+    }else{
+        std::cout << "HMD not found" << std::endl;
     }
-
+#endif
 
 
 
@@ -168,10 +135,6 @@ int main()
 
 
 
-    Shader ourShader("../camera.vs", "../camera.fs");
-    ourShader.use();
-    ourShader.setInt("texture1", 0);
-    ourShader.setInt("texture2", 1);
     glfwSwapInterval(0);
 
     GLuint rightEyeTexture;
@@ -206,12 +169,9 @@ int main()
     glEnableVertexAttribArray(1);
 
 
+    // Quad texture
 
-    // load and create a texture
-    // -------------------------
-    unsigned int texture1, texture2;
-    // texture 1
-    // ---------
+    unsigned int texture1;
     glGenTextures(1, &texture1);
     glBindTexture(GL_TEXTURE_2D, texture1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -219,17 +179,17 @@ int main()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    int width = 100, height = 100, nrChannels = 4;
-    auto *data = new unsigned int[width * height * nrChannels];
-    for (int i = 0; i < width * height * nrChannels; ++i) {
-        data[i] = 100;
-    }
 
-    if (data)
-    {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-    }
+    unsigned int chuj = 0xFF00FFFF;
+    cv::Mat image = cv::imread("w.jpg");
+    cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.cols, image.rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    Shader ourShader("../camera.vs", "../camera.fs");
+    ourShader.use();
+    ourShader.setInt("texture1", 0);
 
 
     while (!glfwWindowShouldClose(window)) {
@@ -243,6 +203,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         Camera camera;
+        vr::HmdMatrix44_t steamProjectionMatrix;
 
         for (int i = 0; i < 2; ++i) {
 
@@ -250,13 +211,21 @@ int main()
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, leftEyeTexture, 0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 camera = Cameras.left;
+
+                #ifdef vr_enabled
+                    steamProjectionMatrix = vr::VRSystem()->GetProjectionMatrix(vr::Eye_Left, 0.1f, 100.0f);
+                #endif
             }
             if( i == 1){
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rightEyeTexture, 0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 camera = Cameras.right;
-            }
 
+                #ifdef vr_enabled
+                    steamProjectionMatrix = vr::VRSystem()->GetProjectionMatrix(vr::Eye_Right, 0.1f, 100.0f);
+                #endif
+
+            }
 
             float currentFrame = static_cast<float>(glfwGetTime());
             deltaTime = currentFrame - lastFrame;
@@ -276,13 +245,20 @@ int main()
 
             // pass projection matrix to shader (note that in this case it could change every frame)
             glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+//
+        #ifdef vr_enabled
+            glm::mat4 openglMatrix = glm::transpose(glm::make_mat4(&steamProjectionMatrix.m[0][0]));
+
+            // Convert the coordinate system
+            glm::mat4 flipY(1.0f);
+            flipY[1][1] = -1.0f;
+            projection = flipY * openglMatrix;
+        #endif
 
             ourShader.setMat4("projection", projection);
 
-            // camera/view transformation
             glm::mat4 view = camera.GetViewMatrix();
 
-//            std::cout << glm::to_string(view) << std::endl;
             ourShader.setMat4("view", view);
 
             // render boxes
@@ -292,15 +268,11 @@ int main()
                 // calculate the model matrix for each object and pass it to shader before drawing
                 glm::mat4 model = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
                 model = glm::translate(model, cubePositions[i]);
-//                float angle = 20.0f * i;
-//                model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
                 ourShader.setMat4("model", model);
 
-                glDrawArrays(GL_TRIANGLES, 0, 36);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
             }
 
-            // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-            // -------------------------------------------------------------------------------
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -315,6 +287,27 @@ int main()
             ImGui::Image( (void*)(intptr_t) rightEyeTexture, ImVec2(SCR_WIDTH, SCR_HEIGHT));
         ImGui::End();
 
+
+        // Pass textures to OpenVR
+#ifdef vr_enabled
+
+        if (vr::VR_IsHmdPresent()) {
+
+            vr::VRTextureBounds_t textureBounds = {0.0f, 0.0f, 1.0f, 1.0f};
+            vr::TrackedDevicePose_t trackedDevicePose[vr::k_unMaxTrackedDeviceCount];
+
+            vr::Texture_t leftEye = {(void *) (uintptr_t) leftEyeTexture, vr::TextureType_OpenGL, vr::ColorSpace_Gamma};
+            vr::Texture_t rightEye = {(void *) (uintptr_t) rightEyeTexture, vr::TextureType_OpenGL,
+                                      vr::ColorSpace_Gamma};
+
+            vr::VRCompositor()->WaitGetPoses(trackedDevicePose, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
+
+            vr::EVRCompositorError error;
+            error = vr::VRCompositor()->Submit(vr::Eye_Left, &leftEye, &textureBounds);
+            error = vr::VRCompositor()->Submit(vr::Eye_Right, &rightEye, &textureBounds);
+
+        }
+#endif
 
         glfwPollEvents();
         ImGui::Render();
@@ -331,6 +324,9 @@ int main()
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
+    ImGui_ImplGlfw_Shutdown();
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui::DestroyContext();
     glfwTerminate();
     return 0;
 }
@@ -352,6 +348,26 @@ void processInput(GLFWwindow *window)
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
             cam->ProcessKeyboard(RIGHT, deltaTime);
 
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
+        Cameras.right.Position[0] += -1 * deltaTime;
+
+    if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS)
+        Cameras.right.Position[0] += 1 * deltaTime;
+
+//    std::cout << Cameras.right.Position[0] << std::endl;
+
+
+    float zoomSpeed = 0;
+    if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS){
+        zoomSpeed = 3;
+    }
+    if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS){
+        zoomSpeed = -3;
+    }
+    if(zoomSpeed){
+        cubePositions[0][2] += zoomSpeed * deltaTime;
     }
 }
 

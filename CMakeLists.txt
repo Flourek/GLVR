@@ -10,6 +10,7 @@ project( GLVR )
 
 find_package( OpenCV REQUIRED)
 find_package( OpenGL REQUIRED )
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 set( LIBS_DIR ${CMAKE_CURRENT_LIST_DIR}/libs)
 
@@ -58,13 +59,14 @@ add_executable( GLVR
         ${imgui_impl_files}
 )
 
+message(w ${OpenCV_DIR})
+target_link_libraries( GLVR ${OpenCV_DIR}/x64/vc16/lib/opencv_world470.lib  )
+
 
 # OpenVR
-#set(OPENVR_DIR ${LIBS_DIR}/openvr/)
-#find_library(OPENVR_LIBRARIES openvr_api HINTS ${OPENVR_DIR}/lib/win64)
-#find_path(OPENVR_INCLUDE_DIRS openvr.h HINTS ${OPENVR_DIR}/headers)
-#include_directories(${OPENVR_INCLUDE_DIRS})
-#target_link_libraries(GLVR ${OPENVR_LIBRARIES})
+set(OPENVR_DIR ${LIBS_DIR}/openvr)
+include_directories(${OPENVR_DIR}/headers)
+target_link_libraries(GLVR ${OPENVR_DIR}/lib/win64/openvr_api.lib)
 
 # GLFW
 set( GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
@@ -77,9 +79,7 @@ include_directories( ${LIBS_DIR}/glfw/include)
 
 include_directories(${LIBS_DIR}/glm)
 include_directories(${LIBS_DIR}/glad/include)
-include_directories( ${OPENGL_INCLUDE_DIR} )
-include_directories( ${OpenCV_INCLUDE_DIRS} )
-target_link_libraries( GLVR ${OpenCV_LIBS} )
+include_directories( ${OPENGL_INCLUDE_DIR})
 target_link_libraries( GLVR ${OPENGL_LIBRARIES} )
 
 
