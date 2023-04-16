@@ -37,7 +37,7 @@ private:
 
 public:
     Camera left  = Camera(glm::vec3(0.0f, 0.0f, 3.0f), worldup);
-    Camera right = Camera(glm::vec3(0.065f, 0.0f, 3.0f),  worldup);
+    Camera right = Camera(glm::vec3(0.0f, 0.0f, 3.0f),  worldup);
 
     Camera *array[2] = {&left, &right};
 
@@ -54,22 +54,22 @@ float lastFrame = 0.0f;
 float imageAspect = 1.0f;
 
 float vertices[] = {
-        -1.0f, -1.0f,  1.0f,  0.0f, 0.0f,
-         1.0f, -1.0f,  1.0f,   1.0f, 0.0f,
-         1.0f,  1.0f,  1.0f,   1.0f, 1.0f,
-         1.0f,  1.0f,  1.0f,   1.0f, 1.0f,
-        -1.0f,  1.0f,  1.0f,  0.0f, 1.0f,
-        -1.0f, -1.0f,  1.0f,  0.0f, 0.0f,
+        -1.0f, -1.0f,  1.0f,     0.0f, 1.0f,
+         1.0f, -1.0f,  1.0f,     1.0f, 1.0f,
+         1.0f,  1.0f,  1.0f,     1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f,     1.0f, 0.0f,
+        -1.0f,  1.0f,  1.0f,     0.0f, 0.0f,
+        -1.0f, -1.0f,  1.0f,     0.0f, 1.0f,
 };
 
 // world space positions of our cubes
 glm::vec3 cubePositions[] = {
-        glm::vec3( 0.0f,  0.0f,  -8.0f),
+        glm::vec3( 0.0f,  2.0f,  -4.0f),
 };
 
-GLuint makeQuadTexture(const char* path){
+GLuint makeQuadTexture(const cv::Mat& mat){
     GLuint texture;
-    cv::Mat image = cv::imread(path);
+    cv::Mat image = mat.clone();
     cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
     imageAspect = (float) image.rows / image.cols;
 
@@ -85,6 +85,49 @@ GLuint makeQuadTexture(const char* path){
 
     return texture;
 }
+
+glm::mat4 convertSteamVRmatToGLM( const vr::HmdMatrix34_t &matPose ) {
+    glm::mat4 matrixObj(
+            matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], 0.0,
+            matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], 0.0,
+            matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], 0.0,
+            matPose.m[0][3], matPose.m[1][3], matPose.m[2][3], 1.0f
+    );
+    return matrixObj;
+}
+
+glm::mat4  getHMDMatrixPoseEye( vr::Hmd_Eye nEye ) {
+
+    vr::HmdMatrix34_t matEye = vr::VRSystem()->GetEyeToHeadTransform(nEye );
+    glm::mat4 mat(
+            matEye.m[0][0], matEye.m[1][0], matEye.m[2][0], 0.0,
+            matEye.m[0][1], matEye.m[1][1], matEye.m[2][1], 0.0,
+            matEye.m[0][2], matEye.m[1][2], matEye.m[2][2], 0.0,
+            matEye.m[0][3], matEye.m[1][3], matEye.m[2][3], 1.0f
+    );
+
+    return mat;
+}
+
+glm::mat4 getHMDMatrixProjectionEye( vr::Hmd_Eye nEye ) {
+
+    vr::HmdMatrix44_t mat =  vr::VRSystem()->GetProjectionMatrix( nEye, 0.1, 100.0f);
+
+    return glm::mat4(
+            mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
+            mat.m[0][1], mat.m[1][1], mat.m[2][1], mat.m[3][1],
+            mat.m[0][2], mat.m[1][2], mat.m[2][2], mat.m[3][2],
+            mat.m[0][3], mat.m[1][3], mat.m[2][3], mat.m[3][3]
+    );
+}
+
+std::string g_inputPath = "w.jpg";
+
+void dropCallback(GLFWwindow *window, int count, const char** paths){
+    if (count > 0)
+        g_inputPath = paths[0];
+}
+
 
 
 int main()
@@ -109,6 +152,7 @@ int main()
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
+    glfwSetDropCallback(window, dropCallback);
     glfwSwapInterval(0);
 
     // tell GLFW to capture our mouse
@@ -193,15 +237,26 @@ int main()
 
 
     // Quad texture
+    while ( g_inputPath.empty() ){
+        glfwPollEvents();
+    }
 
-    GLuint leftColor = makeQuadTexture("wR.jpg");
-    GLuint rightColor = makeQuadTexture("wL.jpg");
+    cv::Mat input_image = cv::imread(g_inputPath);
+
+    cv::Rect roi_left(0, 0, input_image.cols / 2, input_image.rows);
+    cv::Rect roi_right(input_image.cols / 2, 0, input_image.cols / 2, input_image.rows);
+    cv::Mat left_half(input_image, roi_left);
+    cv::Mat right_half(input_image, roi_right);
+
+    GLuint leftColor = makeQuadTexture(left_half);
+    GLuint rightColor = makeQuadTexture(right_half);
 
 
     Shader ourShader("../camera.vs", "../camera.fs");
     ourShader.use();
 //    ourShader.setInt("leftColor", 0);
 
+    vr::TrackedDevicePose_t vrTrackedDevicePose[vr::k_unMaxTrackedDeviceCount];
 
     while (!glfwWindowShouldClose(window)) {
         ImGui_ImplOpenGL3_NewFrame();
@@ -220,6 +275,11 @@ int main()
         processInput(window);
 
         vr::HmdMatrix44_t steamProjectionMatrix{};
+        vr::HmdMatrix34_t steamEyeDisparityMatrix = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+        glm::mat4 eyeDisparity;
+        glm::mat4 projection;
+//        vr::HmdMatrix34_t hmdPose = vr::VRSystem()->GetDeviceToAbsoluteTrackingPose(vr::k_unTrackedDeviceIndex_Hmd, vr::k_ulInvalidInputValue)->mDeviceToAbsoluteTracking;
+
 
         for (Camera *cam : Cameras.array) {
 
@@ -227,8 +287,10 @@ int main()
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, leftEyeTexture, 0);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 glBindTexture(GL_TEXTURE_2D, leftColor);
-                if(vr_enabled)
-                    steamProjectionMatrix = vr::VRSystem()->GetProjectionMatrix(vr::Eye_Left, 0.1f, 100.0f);
+                if(vr_enabled){
+                    projection = getHMDMatrixProjectionEye(vr::Eye_Left);
+                    eyeDisparity = getHMDMatrixPoseEye(vr::Eye_Left);
+                }
             }
 
             if(cam == &Cameras.right){
@@ -236,41 +298,50 @@ int main()
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 glBindTexture(GL_TEXTURE_2D, rightColor);
 
-                if(vr_enabled)
-                    steamProjectionMatrix = vr::VRSystem()->GetProjectionMatrix(vr::Eye_Right, 0.1f, 100.0f);
+                if(vr_enabled){
+                    projection = getHMDMatrixProjectionEye(vr::Eye_Right);
+                    eyeDisparity = getHMDMatrixPoseEye(vr::Eye_Right);
+                }
             }
 
+            glm::mat4 hmdPose = convertSteamVRmatToGLM( vrTrackedDevicePose[0].mDeviceToAbsoluteTracking );
+            vrTrackedDevicePose[0].eTrackingResult;
+            hmdPose = glm::inverse(hmdPose);
 
 
-            // pass projection matrix to shader (note that in this case it could change every frame)
-            glm::mat4 projection = glm::perspective(glm::radians(cam->Zoom), (float)RENDER_WIDTH / (float) RENDER_HEIGHT, 0.1f, 100.0f);
-
-            if(vr_enabled){
-                glm::mat4 openglMatrix = glm::transpose(glm::make_mat4(&steamProjectionMatrix.m[0][0]));
-
-                // Convert the coordinate system
-                glm::mat4 flipY(1.0f);
-                flipY[1][1] = -1.0f;
-                projection = flipY * openglMatrix;
-            }
-
-            glm::mat4 view = cam->GetViewMatrix();
-
-            glm::mat4 model = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+            // Moving the quad and applying aspect ratio
+            glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, cubePositions[0]);
             model = glm::scale(model, glm::vec3(1.0f, imageAspect, 1.0f) );
+
+            glm::mat4 mvp = projection * hmdPose * eyeDisparity  * model;
+
             ourShader.use();
+            ourShader.setMat4("mvp", mvp);
 
-            ourShader.setMat4("model", model);
-            ourShader.setMat4("projection", projection);
-            ourShader.setMat4("view", view);
-
-            // Render quads
+            // Render quad
             glBindVertexArray(VAO);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // Pass textures to OpenVR
+        if(vr_enabled){
+
+            vr::VRCompositor()->WaitGetPoses(vrTrackedDevicePose, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
+
+            vr::Texture_t leftEye = {(void *) (uintptr_t) leftEyeTexture, vr::TextureType_OpenGL, vr::ColorSpace_Gamma};
+            vr::Texture_t rightEye = {(void *) (uintptr_t) rightEyeTexture, vr::TextureType_OpenGL, vr::ColorSpace_Gamma};
+
+            int error = 0;
+            error |= vr::VRCompositor()->Submit(vr::Eye_Left, &leftEye);
+            error |= vr::VRCompositor()->Submit(vr::Eye_Right, &rightEye);
+
+            if(error != vr::VRCompositorError_None)
+                std::cout << "Submit error: " << error;
+
+        }
 
 
         // Render ImGui
@@ -294,23 +365,18 @@ int main()
         ImGui::End();
 
 
-        // Pass textures to OpenVR
-        if(vr_enabled){
+        std::ostringstream out;
+        out.precision(2);
 
-            vr::VRTextureBounds_t textureBounds = {0.0f, 0.0f, 1.0f, 1.0f};
-            vr::TrackedDevicePose_t trackedDevicePose[vr::k_unMaxTrackedDeviceCount];
+        std::cout << glm::to_string(eyeDisparity) << std::endl;
 
-            vr::Texture_t leftEye = {(void *) (uintptr_t) leftEyeTexture, vr::TextureType_OpenGL, vr::ColorSpace_Gamma};
-            vr::Texture_t rightEye = {(void *) (uintptr_t) rightEyeTexture, vr::TextureType_OpenGL,
-                                      vr::ColorSpace_Gamma};
+        ImGui::SetNextWindowPos(ImVec2(SCR_WIDTH / 2 - 10,0));
+        ImGui::SetNextWindowSize( ImVec2(200, 100) );
+        ImGui::Begin("LOLXDE");
+            ImGui::Text("%s", glm::to_string(eyeDisparity).c_str() );
+        ImGui::End();
 
-            vr::VRCompositor()->WaitGetPoses(trackedDevicePose, vr::k_unMaxTrackedDeviceCount, nullptr, 0);
 
-            vr::EVRCompositorError error;
-            error = vr::VRCompositor()->Submit(vr::Eye_Left, &leftEye, &textureBounds);
-            error = vr::VRCompositor()->Submit(vr::Eye_Right, &rightEye, &textureBounds);
-
-        }
 
         // End of frame
         glfwPollEvents();
